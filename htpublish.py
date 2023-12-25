@@ -10,6 +10,7 @@ localTimezone = datetime.now().astimezone().tzinfo
 config: Dict = jsonLoad(open("config.json"))
 srcRoot: Path = Path(config["srcDir"]).absolute()
 destRoot: Path = Path(config["destDir"])
+ignored: List[str] = config["ignored"]
 
 def translateSrcToDestDir(srcDir: Path) -> Path:
     """Convert local paths into remote paths."""
@@ -106,6 +107,11 @@ def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path) -> None:
         destStats["mtime"] = msldToDatetime(destStats["modify"])
 
     for srcChild in srcDir.iterdir():
+        # Match against all ignore patterns
+        if any([srcChild.match(pattern) for pattern in ignored]):
+            print(f"ignore {srcChild}")
+            continue
+
         destChild: Path = destDir / srcChild.name
 
         # If source is directory, try to remotely create it and recurse into it
