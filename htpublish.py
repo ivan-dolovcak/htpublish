@@ -52,15 +52,54 @@ def getPathMTime(path: Path) -> datetime:
         .replace(microsecond=0) \
         .astimezone(timezone.utc)
 
+def rmdDeep(ftpConn: ftplib.FTP, dir_: Path) -> None:
+    """rm -r implementation."""
+
+    try:
+        ftpConn.rmd(str(dir_))
+        print(f"RMD {dir_}")
+    except ftplib.error_perm as e:
+        if int(e.args[0][:3]) != 550: # dir not empty error
+            print("FTP error:", e)
+            return
+    
+    # If directory not empty, delete files and recurse into dirs
+    destMlsdList = simplifyMlsd(ftpConn.mlsd(str(dir_)))
+    for childName, stats in destMlsdList.items():
+        if stats["type"] == "dir":
+            rmdDeep(ftpConn, dir_ / childName)
+        else:
+            ftpConn.delete(str(dir_ / childName))
+            print(f"DELE {dir_ / childName}")
+
 def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path) -> None:
     """Mirror command implementation."""
 
+    print("directory:", srcDir)
     global srcRoot, destRoot
     destDir: Path = translateSrcToDestDir(srcDir)
 
     # Get standardized MLSD directory listing:
     destMlsdList = simplifyMlsd(ftpConn.mlsd(str(destDir)))
     print(f"MLSD {destDir}")
+
+    # Delete remote dirs and files which aren't present locally
+    # (i.e. detect local deletion and do it remotely )
+    srcDirs = [dir_.name for dir_ in srcDir.iterdir() if dir_.is_dir()]
+    destDirs = [child for child, stats in destMlsdList.items() 
+        if stats["type"] == "dir"]
+
+    for deletedDir in filter(lambda dir_: dir_ not in srcDirs, destDirs):
+        rmdDeep(ftpConn, destDir / deletedDir)
+        ftpConn.rmd(str(destDir / deletedDir))
+    
+    srcFiles = [file_.name for file_ in srcDir.iterdir() if file_.is_file()]
+    destFiles = [child for child, stats in destMlsdList.items()
+        if stats["type"] == "file"]
+
+    for deletedFile in filter(lambda file_: file_ not in srcFiles, destFiles):
+        ftpConn.delete(str(destDir / deletedFile))
+        print(f"DELETE1 {deletedFile}")
 
     # Save modtimes as datetime objects in a new key for later comparing
     for destFilename, destStats in destMlsdList.items():
@@ -72,12 +111,12 @@ def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path) -> None:
         # If source is directory, try to remotely create it and recurse into it
         if srcChild.is_dir():
             try:
-                ftpConn.mkd(str(destDir))
+                ftpConn.mkd(str(destChild))
             # If dir already exists, catch error gracefully
             except ftplib.error_perm as e:
-                print(f"SKIP MKD {destDir}")
+                print(f"SKIP MKD {destChild}")
             else:
-                print(f"MKD {destDir}")
+                print(f"MKD {destChild}")
             finally:
                 ftpMirror(ftpConn, srcChild)
         else:
@@ -88,13 +127,13 @@ def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path) -> None:
                 if srcMTime <= destMTime:
                     print(f"SKIP MTIME {srcChild}")
                     continue
-            
+
             # Upload file:
             ftpConn.storbinary(f"STOR {destChild}", open(srcChild, "rb"))
             print(f"STOR {srcChild}")
 
 
-with ftplib.FTP(host=config["hostname"], timeout=3) as ftpConn:
+with ftplib.FTP(host=config["hostname"], timeout=1) as ftpConn:
     ftpConn.login(config["username"], config["password"])
     print(f"LOGIN {config['username']}@{config['hostname']}")
 
