@@ -3,14 +3,49 @@ from datetime import datetime, timezone
 import ftplib
 from json import load as jsonLoad
 from pathlib import Path
-from typing import Iterator, Dict, Tuple, List
+# TODO: fix typing deprecation - dict instead of Dict etc.
+from typing import Iterator, Dict, Tuple, List, Any
+import socket
 
 localTimezone = datetime.now().astimezone().tzinfo
-# Load config
-config: Dict = jsonLoad(open("config.json"))
-srcRoot: Path = Path(config["srcDir"]).absolute()
-destRoot: Path = Path(config["destDir"])
-ignored: List[str] = config["ignored"]
+ftpConn: ftplib.FTP
+config: Dict[str, Any]
+srcRoot: Path
+destRoot: Path
+ignoredPatterns: List[str]
+
+def loadConfig() -> None:
+    global config, srcRoot, destRoot, ignoredPatterns
+
+    # Load config if file exists
+    configPath: Path = Path("config.json")
+    if not configPath.exists():
+        print(f"Error: config file '{configPath}' not found.")
+        exit(1)
+    with open(configPath) as configFile:
+        config = jsonLoad(configFile)
+
+    # Try loading config into globals
+    try:
+        _ = config["hostname"]
+        srcRoot = Path(config["srcDir"]).absolute()
+        destRoot = Path(config["destDir"])
+        ignoredPatterns = config["ignored"]
+    except KeyError as e:
+        print(f"Error: missing required key in config: '{e.args[0]}'")
+        exit(1)
+
+    if not srcRoot.exists():
+        print(f"Error: source dir '{srcRoot}' not found.")
+        exit(1)
+
+def setFtpConn() -> None:
+    global config, ftpConn
+
+    ftpConn = ftplib.FTP(host=config["hostname"], timeout=10)
+
+    ftpConn.login(config["username"], config["password"])
+    print(f"LOGIN {config['username']}@{config['hostname']}")
 
 def translateSrcToDestDir(srcDir: Path) -> Path:
     """Convert local paths into remote paths."""
@@ -32,18 +67,20 @@ def dateTimeToMsld(dateTime: datetime) -> str:
 
     return datetime.strftime(dateTime, "%Y%m%d%H%M%S")
 
-def simplifyMlsd(mlsdResult) -> Dict:
-    """ Transform the MLSD result into a JSON-like object.
+def mlsd(path: Path) -> Dict[str, Dict]:
+    global ftpConn
 
-        Iterator[Tuple[str, Dict[str, str]]] -> Dict[str, Dict[str, str]]
-    """
-
+    # try:
+    mlsdResult = ftpConn.mlsd(str(path))
     mlsdResult = list(mlsdResult)[2:] # Remove "." and ".." from results
+
     mlsdSimple = dict()
     for item in mlsdResult:
         mlsdSimple[item[0]] = item[1]
-
     return mlsdSimple
+    # except ftplib.all_errors as e:
+        # print("MLSD error:", e)
+        # exit(1)
 
 def getPathMTime(path: Path) -> datetime:
     """Get local file/directory modtime as a datetime object."""
@@ -53,8 +90,10 @@ def getPathMTime(path: Path) -> datetime:
         .replace(microsecond=0) \
         .astimezone(timezone.utc)
 
-def rmdDeep(ftpConn: ftplib.FTP, dir_: Path) -> None:
+def rmdDeep(dir_: Path) -> None:
     """rm -r implementation."""
+
+    global ftpConn
 
     flagRemoved = False
     try:
@@ -62,15 +101,16 @@ def rmdDeep(ftpConn: ftplib.FTP, dir_: Path) -> None:
         flagRemoved = True
         print(f"RMD {dir_}")
     except ftplib.error_perm as e:
-        if int(e.args[0][:3]) != 550: # dir not empty error
+        ftpErrCode: int = int(e.args[0][:3]) 
+        if ftpErrCode != 550: # dir not empty error
             print("FTP error:", e)
             return
     
     # If directory not empty, delete files and recurse into dirs
-    destMlsdList = simplifyMlsd(ftpConn.mlsd(str(dir_)))
+    destMlsdList = mlsd(dir_)
     for childName, stats in destMlsdList.items():
         if stats["type"] == "dir":
-            rmdDeep(ftpConn, dir_ / childName)
+            rmdDeep(dir_ / childName)
         else:
             ftpConn.delete(str(dir_ / childName))
             print(f"DELE {dir_ / childName}")
@@ -80,19 +120,25 @@ def rmdDeep(ftpConn: ftplib.FTP, dir_: Path) -> None:
         print(f"RMD {dir_}")
 
 lastMkd: Path = None
-
-def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path) -> None:
+def ftpMirror(srcDir: Path) -> None:
     """Mirror command implementation."""
 
-    global srcRoot, destRoot, lastMkd
+    global ftpConn, srcRoot, destRoot, lastMkd, ignoredPatterns
     destDir: Path = translateSrcToDestDir(srcDir)
 
-    if destDir != lastMkd:
-        # Get standardized MLSD directory listing:
-        msldResult = ftpConn.mlsd(str(destDir))
-        destMlsdList = simplifyMlsd(msldResult)
-        print(f"MLSD {destDir}")
+    # Get standardized MLSD directory listing
+    try:
+        destMlsdList = mlsd(destDir)
+    except ftplib.all_errors as e:
+        print(e, "RETRY")
+        setFtpConn()
+        ftpMirror(srcDir)
+        return
+    print(f"MLSD {destDir}")
 
+    # lastMkd is the path of the last created empty directory.
+    # It's guaranteed to be empty, so no need to check for files to delete:
+    if destDir != lastMkd:
         # Delete remote dirs and files which aren't present locally
         # (i.e. detect local deletion and do it remotely )
         srcDirs = [dir_.name for dir_ in srcDir.iterdir() if dir_.is_dir()]
@@ -100,7 +146,7 @@ def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path) -> None:
             if stats["type"] == "dir"]
 
         for deletedDir in filter(lambda dir_: dir_ not in srcDirs, destDirs):
-            rmdDeep(ftpConn, destDir / deletedDir)
+            rmdDeep(destDir / deletedDir)
         
         srcFiles = [file_.name for file_ in srcDir.iterdir() if file_.is_file()]
         destFiles = [child for child, stats in destMlsdList.items()
@@ -114,11 +160,11 @@ def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path) -> None:
         for destFilename, destStats in destMlsdList.items():
             destStats["mtime"] = msldToDatetime(destStats["modify"])
     else:
-        print(f"SKIP (check) {destDir}")
+        print(f"SKIP (rm -r) {destDir}")
 
     for srcChild in srcDir.iterdir():
         # Match against all ignore patterns
-        if any([srcChild.match(pattern) for pattern in ignored]):
+        if any([srcChild.match(pattern) for pattern in ignoredPatterns]):
             print(f"SKIP (ignore) {srcChild}")
             continue
 
@@ -135,7 +181,7 @@ def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path) -> None:
                 lastMkd = destChild
                 print(f"MKD {destChild}")
             finally:
-                ftpMirror(ftpConn, srcChild)
+                ftpMirror(srcChild)
         else:
             srcMTime = getPathMTime(srcChild)
             if srcChild.name in destMlsdList.keys():
@@ -151,18 +197,23 @@ def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path) -> None:
             # Update file mtime:
             ftpConn.sendcmd(f"MFMT {dateTimeToMsld(srcMTime)} {destChild}")
 
-def main():
-    with ftplib.FTP(host=config["hostname"], timeout=1) as ftpConn:
-        ftpConn.login(config["username"], config["password"])
-        print(f"LOGIN {config['username']}@{config['hostname']}")
+def ftpLoop() -> None:
+    global srcRoot
+    ftpMirror(srcRoot)
+    ftpConn.close()
 
-        # Start recursive uploading from specified local root dir:
-        ftpMirror(ftpConn, srcRoot)
+def main():
+    loadConfig()
+    setFtpConn()
+    # Start recursive uploading from specified local root dir:
 
 if __name__ == "__main__":
+    main()
     try:
-        main()
-    except TimeoutError as e:
+        ftpLoop()
+    except Exception as e:
         print("Error: ", e)
         print(f"{'=' * 30}RETRYING{'=' * 30}")
-        main()
+        ftpConn.close()
+        setFtpConn()
+        ftpLoop()
