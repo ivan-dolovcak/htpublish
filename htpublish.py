@@ -3,18 +3,17 @@ from datetime import datetime, timezone
 import ftplib
 from json import load as jsonLoad
 from pathlib import Path
-# TODO: fix typing deprecation - dict instead of Dict etc.
-from typing import Iterator, Dict, Tuple, List, Any
+from typing import Any, NoReturn
 import socket
 
 localTimezone = datetime.now().astimezone().tzinfo
 ftpConn: ftplib.FTP
-config: Dict[str, Any]
+config: dict[str, Any]
 srcRoot: Path
 destRoot: Path
-ignoredPatterns: List[str]
+ignoredPatterns: list[str]
 
-def loadConfig() -> None:
+def loadConfig() -> NoReturn:
     global config, srcRoot, destRoot, ignoredPatterns
 
     # Load config if file exists
@@ -39,7 +38,7 @@ def loadConfig() -> None:
         print(f"Error: source dir '{srcRoot}' not found.")
         exit(1)
 
-def setFtpConn() -> None:
+def setFtpConn() -> NoReturn:
     global config, ftpConn
 
     ftpConn = ftplib.FTP(host=config["hostname"], timeout=10)
@@ -67,7 +66,7 @@ def dateTimeToMsld(dateTime: datetime) -> str:
 
     return datetime.strftime(dateTime, "%Y%m%d%H%M%S")
 
-def mlsd(path: Path) -> Dict[str, Dict]:
+def mlsd(path: Path) -> dict[str, dict[str, Any]]:
     global ftpConn
 
     # try:
@@ -90,7 +89,7 @@ def getPathMTime(path: Path) -> datetime:
         .replace(microsecond=0) \
         .astimezone(timezone.utc)
 
-def rmdDeep(dir_: Path) -> None:
+def rmdDeep(dir_: Path) -> NoReturn:
     """rm -r implementation."""
 
     global ftpConn
@@ -120,7 +119,7 @@ def rmdDeep(dir_: Path) -> None:
         print(f"RMD {dir_}")
 
 lastMkd: Path = None
-def ftpMirror(srcDir: Path) -> None:
+def ftpMirror(srcDir: Path) -> NoReturn:
     """Mirror command implementation."""
 
     global ftpConn, srcRoot, destRoot, lastMkd, ignoredPatterns
@@ -197,15 +196,14 @@ def ftpMirror(srcDir: Path) -> None:
             # Update file mtime:
             ftpConn.sendcmd(f"MFMT {dateTimeToMsld(srcMTime)} {destChild}")
 
-def ftpLoop() -> None:
+def ftpLoop() -> NoReturn:
     global srcRoot
     ftpMirror(srcRoot)
     ftpConn.close()
 
-def main():
+def main() -> NoReturn:
     loadConfig()
     setFtpConn()
-    # Start recursive uploading from specified local root dir:
 
 if __name__ == "__main__":
     main()
