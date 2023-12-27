@@ -3,13 +3,12 @@ import ftplib
 from json import load as jsonLoad
 from json.decoder import JSONDecodeError
 from pathlib import Path, PurePath
-from typing import Any
 
 from logger import Logger
 from ftp import FTP
 
 
-def loadConfig() -> dict[str, Any]:
+def loadConfig() -> dict[str, object]:
     # Load config if file exists
     configPath = Path("config.json")
     if not configPath.exists():
