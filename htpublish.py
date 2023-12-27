@@ -5,23 +5,66 @@ from json import load as jsonLoad
 from json.decoder import JSONDecodeError
 from pathlib import Path, PurePath
 from typing import Any
+from importlib.util import find_spec
+try:
+    import colorama
+    colorama.just_fix_windows_console()
+except ModuleNotFoundError as e:
+    # colorama is not an essential module
+    pass
 
 
 localTimezone = datetime.now().astimezone().tzinfo
 # MSLD uses an almost short ISO format (missing date/time separator):
 mlsdTSFormat = "%Y%m%d%H%M%S"
 
+class Logger:
+    colorSupported: bool = find_spec("colorama") is not None
+    padAmt: int = 4
+
+    loggerModes = {
+        "error": {
+            "color": "\033[31m", # red fg
+            "prompt": "ERR"
+        },
+        "info": {
+            "color": "\033[34m", # blue fg
+            "prompt": "INFO"
+        },
+        "ok": {
+            "color": "\033[32m", # green fg
+            "prompt": "OK"
+        },
+        "note": {
+            "color": "\033[33m", # yellow fg
+            "prompt": "NOTE"
+        },
+    }
+    
+    @classmethod
+    def log(cls, message: str, modeName: str) -> None:
+        mode = cls.loggerModes[modeName]
+        if cls.colorSupported:
+            print(mode["color"], end="")
+        
+        print(f"[ {mode['prompt'].center(cls.padAmt)} ] {message}", end="")
+
+        if cls.colorSupported:
+            print("\033[39m") # reset fg
+        else:
+            print()
+
 def loadConfig() -> dict[str, Any]:
     # Load config if file exists
     configPath = Path("config.json")
     if not configPath.exists():
-        print(f"Error: config file '{configPath}' not found.")
+        Logger.log(f"Error: config file '{configPath}' not found.", "error")
         exit(1)
     with configPath.open() as configFile:
         try:
             config = jsonLoad(configFile)
         except JSONDecodeError as e:
-            print("Error: malformed JSON:", e)
+            Logger.log(f"Error: malformed JSON: {e}", "error")
             exit(1)
 
     # Try parsing config
@@ -31,18 +74,18 @@ def loadConfig() -> dict[str, Any]:
         config["srcDir"] = Path(config["srcDir"]).absolute()
         config["destDir"] = PurePath(config["destDir"])
     except KeyError as e:
-        print(f"Error: missing required key in config: '{e.args[0]}'")
+        Logger.log(f"Error: missing required key in config: '{e.args[0]}'", "error")
         exit(1)
     
     if "timeout" in config.keys():
         if config["timeout"] not in range(1, 60):
-            print(f"Error: bogus timeout value: {config['timeout']}")
+            Logger.log(f"Error: bogus timeout value: {config['timeout']}", "error")
             exit(1)
     else:
         config["timeout"] = 3
 
     if not config["srcDir"].exists():
-        print(f"Error: source dir '{config['srcDir']}' not found.")
+        Logger.log(f"Error: source dir '{config['srcDir']}' not found.", error)
         exit(1)
     
     return config
@@ -74,11 +117,11 @@ def rmdDeep(ftpConn: ftplib.FTP, dir_: PurePath) -> None:
     try:
         ftpConn.rmd(str(dir_))
         flagRemoved = True
-        print(f"RMD {dir_}")
+        Logger.log(f"RMD {dir_}", "note")
     except ftplib.error_perm as e:
         ftpErrCode = int(e.args[0][:3]) 
         if ftpErrCode != 550: # dir not empty error
-            print("FTP error:", e)
+            Logger.log(f"FTP error: {e}", "error")
             return
     
     # If dir not empty, delete files and recurse into other dirs
@@ -88,11 +131,11 @@ def rmdDeep(ftpConn: ftplib.FTP, dir_: PurePath) -> None:
             rmdDeep(ftpConn, dir_ / childName)
         else:
             ftpConn.delete(str(dir_ / childName))
-            print(f"DELE {dir_ / childName}")
+            Logger.log(f"DELE {dir_ / childName}", "note")
 
     if not flagRemoved:
         ftpConn.rmd(str(dir_))
-        print(f"RMD {dir_}")
+        Logger.log(f"RMD {dir_}", "note")
 
 # Path to last empty directory made in ftpMirror():
 lastMkd: PurePath|None = None
@@ -110,7 +153,7 @@ def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path, srcRoot: Path,
     if destDir != lastMkd:
         # Get standardized MLSD directory listing:
         mlsdList = mlsd(ftpConn, destDir)
-        print(f"MLSD {destDir}")
+        Logger.log(f"MLSD {destDir}", "ok")
 
         # Delete remote dirs and files which aren't present locally
         # (i.e. detect local deletion and do it remotely)
@@ -127,7 +170,7 @@ def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path, srcRoot: Path,
 
         for deletedFile in filter(lambda file_: file_ not in srcFiles, destFiles):
             ftpConn.delete(str(destDir / deletedFile))
-            print(f"DELE {deletedFile}")
+            Logger.log(f"DELE {deletedFile}", "note")
 
         # Save modtimes as datetime objects in a new key for later comparing
         for destFilename, destStats in mlsdList.items():
@@ -136,12 +179,12 @@ def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path, srcRoot: Path,
                 mlsdTSFormat).replace(tzinfo=timezone.utc)
     else:
         mlsdList = {}
-        print(f"SKIP (rmcheck) {destDir}")
+        Logger.log(f"SKIP (rmcheck) {destDir}", "info")
 
     for srcChild in srcDir.iterdir():
         # Match against all ignore patterns
         if any([srcChild.match(pattern) for pattern in ignoreRegex]):
-            print(f"SKIP (ignore) {srcChild}")
+            Logger.log(f"SKIP (ignore) {srcChild}", "info")
             continue
 
         destChild: PurePath = destDir / srcChild.name
@@ -152,10 +195,10 @@ def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path, srcRoot: Path,
                 ftpConn.mkd(str(destChild))
             # If dir already exists, catch error gracefully
             except ftplib.error_perm as e:
-                print(f"SKIP MKD (already exists) {destChild}")
+                Logger.log(f"SKIP MKD (already exists) {destChild}", "info")
             else:
                 lastMkd = destChild
-                print(f"MKD {destChild}")
+                Logger.log(f"MKD {destChild}", "ok")
             finally:
                 ftpMirror(ftpConn, srcChild, srcRoot, destRoot, ignoreRegex)
         else:
@@ -164,23 +207,24 @@ def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path, srcRoot: Path,
                 # Skip file if local modtime is smaller or equal to remote
                 destMTime = mlsdList[srcChild.name]["mtime"]
                 if srcMTime <= destMTime:
-                    print(f"SKIP (mtime) {srcChild}")
+                    Logger.log(f"SKIP (mtime) {srcChild}", "info")
                     continue
 
             # Upload file
             # Open in binary read mode since FTP.storbinary() is used
             ftpConn.storbinary(f"STOR {destChild}", srcChild.open("rb"))
-            print(f"STOR {srcChild}")
+            Logger.log(f"STOR {srcChild}", "ok")
 
             msldTimestamp: str = datetime.strftime(srcMTime, mlsdTSFormat)
             # Touch the remote file:
             ftpConn.sendcmd(f"MFMT {msldTimestamp} {destChild}")
+            Logger.log(f"MFMT {destChild}", "ok")
 
 def makeFtpConn(hostname: str, username: str, password: str, timeout: int
         ) -> ftplib.FTP:
     ftpConn = ftplib.FTP(host=hostname, timeout=timeout)
     ftpConn.login(username, password)
-    print(f"LOGIN {username}@{hostname}")
+    Logger.log(f"LOGIN {username}@{hostname}", "ok")
 
     return ftpConn
 
@@ -197,12 +241,12 @@ def main() -> None:
                 config["destDir"], config["ignored"])
 
             ftpConn.close()
-            print("BYE")
+            Logger.log("BYE", "ok")
             break
         except ftplib.all_errors as e:
-            print("FTP Error:", e)
+            Logger.log(f"FTP Error: {e}", "error")
             if "timed out" in str(e):
-                print("RETRYING...")
+                Logger.log("RETRYING...", "note")
             else:
                 exit(1)
 
