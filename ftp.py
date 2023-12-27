@@ -7,12 +7,12 @@ from logger import Logger
 
 
 def getPathMTime(path: Path) -> datetime:
-        """Get local file/directory modtime as a datetime object."""
+    """Get local file/directory modtime as a datetime object."""
 
-        return datetime \
-            .fromtimestamp(path.stat().st_mtime, FTP.localTimezone) \
-            .replace(microsecond=0) \
-            .astimezone(timezone.utc)
+    return datetime \
+        .fromtimestamp(path.stat().st_mtime, FTP.localTimezone) \
+        .replace(microsecond=0) \
+        .astimezone(timezone.utc)
 
 class FTP:
     localTimezone = datetime.now().astimezone().tzinfo
@@ -40,6 +40,8 @@ class FTP:
         """Convert complex object returned by FTP.mlsd() into a JSON-like object."""
 
         mlsdResult = self.ftpConn.mlsd(str(path))
+        Logger.log(f"MLSD {path}", "ok")
+
         # Remove "." and ".." from results:
         mlsdResultList = list(mlsdResult)[2:]
 
@@ -87,29 +89,21 @@ class FTP:
         if destDir != FTP._lastMkd:
             # Get standardized MLSD directory listing:
             mlsdList = self.mlsd(destDir)
-            Logger.log(f"MLSD {destDir}", "ok")
 
             # Delete remote dirs and files which aren't present locally
             # (i.e. detect local deletion and do it remotely)
             srcDirs = [dir_.name for dir_ in srcDir.iterdir() if dir_.is_dir()]
-            destDirs = [child for child, stats in mlsdList.items() 
-                if stats["type"] == "dir"]
-
-            for deletedDir in filter(lambda dir_: dir_ not in srcDirs, destDirs):
-                self.rmdDeep(destDir / deletedDir)
-            
             srcFiles = [file_.name for file_ in srcDir.iterdir() if file_.is_file()]
-            destFiles = [child for child, stats in mlsdList.items()
-                if stats["type"] == "file"]
 
-            for deletedFile in filter(lambda file_: file_ not in srcFiles, destFiles):
-                self.ftpConn.delete(str(destDir / deletedFile))
-                Logger.log(f"DELE {deletedFile}", "note")
-
-            # Save modtimes as datetime objects in a new key for later comparing
-            for destFilename, destStats in mlsdList.items():
-                # MSLD should give timestamps in UTC
-                destStats["mtime"] = datetime.strptime(destStats["modify"],
+            for child, childStats in mlsdList.items():
+                if childStats["type"] == "dir" and child not in srcDirs:
+                    self.rmdDeep(destDir / child)
+                elif childStats["type"] == "file" and child not in srcFiles:
+                    self.ftpConn.delete(str(destDir / child))
+                
+                # Save modtimes as datetime objects in a new key for later
+                # comparing. MSLD should give timestamps in UTC.
+                childStats["mtime"] = datetime.strptime(childStats["modify"],
                     FTP.mlsdTSFormat).replace(tzinfo=timezone.utc)
         else:
             mlsdList = {}
@@ -125,31 +119,29 @@ class FTP:
 
             # If source is directory, try to remotely create it and recurse into it
             if srcChild.is_dir():
-                try:
-                    self.ftpConn.mkd(str(destChild))
-                # If dir already exists, catch error gracefully
-                except ftplib.error_perm as e:
+                if srcChild.name in mlsdList.keys():
                     Logger.log(f"SKIP MKD (already exists) {destChild}", "info")
                 else:
+                    self.ftpConn.mkd(str(destChild))
                     _lastMkd = destChild
                     Logger.log(f"MKD {destChild}", "ok")
-                finally:
-                    self.mirror(srcChild, srcRoot, destRoot, ignoredPatterns)
-            else:
-                srcMTime = getPathMTime(srcChild)
-                if srcChild.name in mlsdList.keys():
-                    # Skip file if local modtime is smaller or equal to remote
-                    destMTime = mlsdList[srcChild.name]["mtime"]
-                    if srcMTime <= destMTime:
-                        Logger.log(f"SKIP (mtime) {srcChild}", "info")
-                        continue
 
-                # Upload file
-                # Open in binary read mode since FTP.storbinary() is used
-                self.ftpConn.storbinary(f"STOR {destChild}", srcChild.open("rb"))
-                Logger.log(f"STOR {srcChild}", "ok")
+                self.mirror(srcChild, srcRoot, destRoot, ignoredPatterns)
+                return
 
-                msldTimestamp: str = datetime.strftime(srcMTime, FTP.mlsdTSFormat)
-                # Touch the remote file:
-                self.ftpConn.sendcmd(f"MFMT {msldTimestamp} {destChild}")
-                Logger.log(f"MFMT {destChild}", "ok")
+            srcMTime = getPathMTime(srcChild)
+            if srcChild.name in mlsdList.keys():
+                # Skip file if local modtime is smaller or equal to remote
+                destMTime = mlsdList[srcChild.name]["mtime"]
+                if srcMTime <= destMTime:
+                    Logger.log(f"SKIP (mtime) {srcChild}", "info")
+                    continue
+
+            # Open in binary read mode since FTP.storbinary() is used
+            self.ftpConn.storbinary(f"STOR {destChild}", srcChild.open("rb"))
+            Logger.log(f"STOR {srcChild}", "ok")
+
+            msldTimestamp: str = datetime.strftime(srcMTime, FTP.mlsdTSFormat)
+            # Touch the remote file:
+            self.ftpConn.sendcmd(f"MFMT {msldTimestamp} {destChild}")
+            Logger.log(f"MFMT {destChild}", "ok")

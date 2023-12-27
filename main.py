@@ -32,6 +32,10 @@ def loadConfig() -> dict[str, Any]:
         Logger.log(f"Error: missing required key in config: '{e.args[0]}'", "error")
         exit(1)
     
+    if not config["destDir"].is_absolute():
+        Logger.log("Error: 'destDir' has to be an absolute path.", "error")
+        exit(1)
+    
     if "timeout" in config.keys():
         if config["timeout"] not in range(1, 60):
             Logger.log(f"Error: bogus timeout value: {config['timeout']}", "error")
