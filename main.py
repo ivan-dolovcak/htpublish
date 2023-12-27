@@ -1,58 +1,17 @@
 #!/usr/bin/python3
-try:
-    import colorama
-    colorama.just_fix_windows_console()
-except ModuleNotFoundError as e:
-    # colorama is not an essential module:
-    pass
 from datetime import datetime, timezone
 import ftplib
-from importlib.util import find_spec as findModule
 from json import load as jsonLoad
 from json.decoder import JSONDecodeError
 from pathlib import Path, PurePath
 from typing import Any
 
+from logger import Logger
+
 
 localTimezone = datetime.now().astimezone().tzinfo
 # MSLD uses an almost short ISO format (missing date/time separator):
 mlsdTSFormat = "%Y%m%d%H%M%S"
-
-class Logger:
-    colorSupported: bool = findModule("colorama") is not None
-    padAmt: int = 4
-
-    loggerModes = {
-        "error": {
-            "color": "\033[31m", # red fg
-            "prompt": "ERR"
-        },
-        "info": {
-            "color": "\033[34m", # blue fg
-            "prompt": "INFO"
-        },
-        "ok": {
-            "color": "\033[32m", # green fg
-            "prompt": "OK"
-        },
-        "note": {
-            "color": "\033[33m", # yellow fg
-            "prompt": "NOTE"
-        },
-    }
-    
-    @classmethod
-    def log(cls, message: str, modeName: str) -> None:
-        mode = cls.loggerModes[modeName]
-        if cls.colorSupported:
-            print(mode["color"], end="")
-        
-        print(f"[ {mode['prompt'].center(cls.padAmt)} ] {message}", end="")
-
-        if cls.colorSupported:
-            print("\033[39m") # reset fg
-        else:
-            print()
 
 def loadConfig() -> dict[str, Any]:
     # Load config if file exists
