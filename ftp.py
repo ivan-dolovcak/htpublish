@@ -1,6 +1,7 @@
 import ftplib
 from datetime import datetime, timezone
 from pathlib import Path, PurePath
+from typing import Any
 
 from logger import Logger
 
@@ -36,7 +37,7 @@ class FTP:
         self.ftpConn.close()
         Logger.log(Logger.Mode.ok, "BYE")
 
-    def mlsd(self, path: PurePath) -> dict[str, dict[str, object]]:
+    def mlsd(self, path: PurePath) -> dict[str, dict[str, Any]]:
         """Convert complex object returned by FTP.mlsd() into a JSON-like
         object."""
 

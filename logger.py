@@ -28,3 +28,6 @@ class Logger:
         formatted = f"{mode['prompt'].ljust(8)} {message}"
         
         print(cls.colored(formatted, mode["color"]))
+
+        if mode is cls.Mode.error:
+            exit(1)
