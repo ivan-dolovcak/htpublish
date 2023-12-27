@@ -1,17 +1,17 @@
 #!/usr/bin/python3
-from datetime import datetime, timezone
-import ftplib
-from json import load as jsonLoad
-from json.decoder import JSONDecodeError
-from pathlib import Path, PurePath
-from typing import Any
-from importlib.util import find_spec
 try:
     import colorama
     colorama.just_fix_windows_console()
 except ModuleNotFoundError as e:
-    # colorama is not an essential module
+    # colorama is not an essential module:
     pass
+from datetime import datetime, timezone
+import ftplib
+from importlib.util import find_spec as findModule
+from json import load as jsonLoad
+from json.decoder import JSONDecodeError
+from pathlib import Path, PurePath
+from typing import Any
 
 
 localTimezone = datetime.now().astimezone().tzinfo
@@ -19,7 +19,7 @@ localTimezone = datetime.now().astimezone().tzinfo
 mlsdTSFormat = "%Y%m%d%H%M%S"
 
 class Logger:
-    colorSupported: bool = find_spec("colorama") is not None
+    colorSupported: bool = findModule("colorama") is not None
     padAmt: int = 4
 
     loggerModes = {
@@ -85,10 +85,17 @@ def loadConfig() -> dict[str, Any]:
         config["timeout"] = 3
 
     if not config["srcDir"].exists():
-        Logger.log(f"Error: source dir '{config['srcDir']}' not found.", error)
+        Logger.log(f"Error: source dir '{config['srcDir']}' not found.", "error")
         exit(1)
     
     return config
+
+def makeFtpConn(config: dict[str, Any]) -> ftplib.FTP:
+    ftpConn = ftplib.FTP(host=config["hostname"], timeout=config["timeout"])
+    ftpConn.login(config["username"], config["password"])
+    Logger.log(f"LOGIN {config['username']}@{config['hostname']}", "ok")
+
+    return ftpConn
 
 def mlsd(ftpConn: ftplib.FTP, path: PurePath) -> dict[str, dict[str, Any]]:
     """Convert complex object returned by FTP.mlsd() into a JSON-like object."""
@@ -140,13 +147,12 @@ def rmdDeep(ftpConn: ftplib.FTP, dir_: PurePath) -> None:
 # Path to last empty directory made in ftpMirror():
 lastMkd: PurePath|None = None
 
-def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path, srcRoot: Path, 
-              destRoot: PurePath, ignoreRegex: list) -> None:
+def ftpMirror(ftpConn: ftplib.FTP, config: dict[str, Any], srcDir: Path) -> None:
     """Mirror command implementation."""
 
     global lastMkd
     # Translate local paths into remote paths (switch roots):
-    destDir = destRoot / srcDir.relative_to(srcRoot)
+    destDir = config["destDir"] / srcDir.relative_to(config["srcDir"])
 
     # lastMkd is guaranteed to be empty, so no need to check for files to
     # delete:
@@ -183,7 +189,7 @@ def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path, srcRoot: Path,
 
     for srcChild in srcDir.iterdir():
         # Match against all ignore patterns
-        if any([srcChild.match(pattern) for pattern in ignoreRegex]):
+        if any([srcChild.match(pattern) for pattern in config["ignored"]]):
             Logger.log(f"SKIP (ignore) {srcChild}", "info")
             continue
 
@@ -200,7 +206,7 @@ def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path, srcRoot: Path,
                 lastMkd = destChild
                 Logger.log(f"MKD {destChild}", "ok")
             finally:
-                ftpMirror(ftpConn, srcChild, srcRoot, destRoot, ignoreRegex)
+                ftpMirror(ftpConn, config, srcChild)
         else:
             srcMTime = getPathMTime(srcChild)
             if srcChild.name in mlsdList.keys():
@@ -220,25 +226,15 @@ def ftpMirror(ftpConn: ftplib.FTP, srcDir: Path, srcRoot: Path,
             ftpConn.sendcmd(f"MFMT {msldTimestamp} {destChild}")
             Logger.log(f"MFMT {destChild}", "ok")
 
-def makeFtpConn(hostname: str, username: str, password: str, timeout: int
-        ) -> ftplib.FTP:
-    ftpConn = ftplib.FTP(host=hostname, timeout=timeout)
-    ftpConn.login(username, password)
-    Logger.log(f"LOGIN {username}@{hostname}", "ok")
-
-    return ftpConn
-
 def main() -> None:
     config = loadConfig()
 
     # Infinite loop to retry in case of timeout errors
     while True:
         try:
-            ftpConn = makeFtpConn(config["hostname"], config["username"], 
-                config["password"], config["timeout"])
+            ftpConn = makeFtpConn(config)
 
-            ftpMirror(ftpConn, config["srcDir"], config["srcDir"], 
-                config["destDir"], config["ignored"])
+            ftpMirror(ftpConn, config, config["srcDir"])
 
             ftpConn.close()
             Logger.log("BYE", "ok")
