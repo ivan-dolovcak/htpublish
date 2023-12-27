@@ -20,7 +20,8 @@ class FTP:
     # Path to last empty directory made in mirror():
     _lastMkd: PurePath|None = None
 
-    def __init__(self, hostname: str, username: str, password: str, timeout: int):
+    def __init__(self, hostname: str, username: str, password: str, 
+                 timeout: int):
         self.hostname: str = hostname
         self.username: str = username
         self.password: str = password
@@ -36,7 +37,8 @@ class FTP:
         Logger.log(Logger.Mode.ok, "BYE")
 
     def mlsd(self, path: PurePath) -> dict[str, dict[str, object]]:
-        """Convert complex object returned by FTP.mlsd() into a JSON-like object."""
+        """Convert complex object returned by FTP.mlsd() into a JSON-like
+        object."""
 
         mlsdResult = self.ftpConn.mlsd(str(path))
         Logger.log(Logger.Mode.ok, f"MLSD {path}")
@@ -91,8 +93,10 @@ class FTP:
 
             # Delete remote dirs and files which aren't present locally
             # (i.e. detect local deletion and do it remotely)
-            srcDirs = [dir_.name for dir_ in srcDir.iterdir() if dir_.is_dir()]
-            srcFiles = [file_.name for file_ in srcDir.iterdir() if file_.is_file()]
+            srcDirs = [
+                dir_.name for dir_ in srcDir.iterdir() if dir_.is_dir()]
+            srcFiles = [
+                file_.name for file_ in srcDir.iterdir() if file_.is_file()]
 
             for child, childStats in mlsdList.items():
                 if childStats["type"] == "dir" and child not in srcDirs:
@@ -116,10 +120,12 @@ class FTP:
 
             destChild: PurePath = destDir / srcChild.name
 
-            # If source is directory, try to remotely create it and recurse into it
+            # If source is directory, try to remotely create it and recurse into
+            # it
             if srcChild.is_dir():
                 if srcChild.name in mlsdList.keys():
-                    Logger.log(Logger.Mode.info, f"SKIP MKD (already exists) {destChild}")
+                    Logger.log(Logger.Mode.info,
+                        f"SKIP MKD (already exists) {destChild}")
                 else:
                     self.ftpConn.mkd(str(destChild))
                     _lastMkd = destChild

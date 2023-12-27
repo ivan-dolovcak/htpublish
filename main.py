@@ -12,7 +12,8 @@ def loadConfig() -> dict[str, object]:
     # Load config if file exists
     configPath = Path("config.json")
     if not configPath.exists():
-        Logger.log(Logger.Mode.error, f"Error: config file '{configPath}' not found.")
+        Logger.log(Logger.Mode.error,
+            f"Error: config file '{configPath}' not found.")
         exit(1)
     with configPath.open() as configFile:
         try:
@@ -28,22 +29,26 @@ def loadConfig() -> dict[str, object]:
         config["srcDir"] = Path(config["srcDir"]).absolute()
         config["destDir"] = PurePath(config["destDir"])
     except KeyError as e:
-        Logger.log(Logger.Mode.error, f"Error: missing required key in config: '{e.args[0]}'")
+        Logger.log(Logger.Mode.error, 
+            f"Error: missing required key in config: '{e.args[0]}'")
         exit(1)
     
     if not config["destDir"].is_absolute():
-        Logger.log(Logger.Mode.error, "Error: 'destDir' has to be an absolute path.")
+        Logger.log(Logger.Mode.error,
+            "Error: 'destDir' has to be an absolute path.")
         exit(1)
     
     if "timeout" in config.keys():
         if config["timeout"] not in range(1, 60):
-            Logger.log(Logger.Mode.error, f"Error: bogus timeout value: {config['timeout']}")
+            Logger.log(Logger.Mode.error,
+                f"Error: bogus timeout value: {config['timeout']}")
             exit(1)
     else:
         config["timeout"] = 3
 
     if not config["srcDir"].exists():
-        Logger.log(Logger.Mode.error, f"Error: source dir '{config['srcDir']}' not found.")
+        Logger.log(Logger.Mode.error,
+            f"Error: source dir '{config['srcDir']}' not found.")
         exit(1)
     
     return config
