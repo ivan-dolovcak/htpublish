@@ -18,6 +18,8 @@ class Logger:
 
     @classmethod
     def colored(cls, text: str, color: str) -> str:
+        """ Print a colored string using ANSI codes if color is supported.
+        """
         if cls.colorSupported:
             return f"{color}{text}{colorama.Style.RESET_ALL}"
         else:
@@ -25,9 +27,13 @@ class Logger:
 
     @classmethod
     def log(cls, mode: dict[str, str], message: str) -> None:
+        """ Print a colored log message.
+
+            Example: [ERROR]    FTP error: timeout
+        """
         formatted = f"{mode['prompt'].ljust(8)} {message}"
         
         print(cls.colored(formatted, mode["color"]))
 
-        if mode is cls.Mode.error:
+        if mode == cls.Mode.error:
             exit(1)

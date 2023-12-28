@@ -1,13 +1,14 @@
 import ftplib
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from pathlib import Path, PurePath
 from typing import Any
 
 from logger import Logger
 
 
-def getPathMTime(path: Path) -> datetime:
-    """Get local file/directory modtime as a datetime object."""
+def getFileMTime(path: Path) -> datetime:
+    """ Get local file's modtime as a datetime object.
+    """
 
     return datetime \
         .fromtimestamp(path.stat().st_mtime, FTP.localTimezone) \
@@ -15,9 +16,9 @@ def getPathMTime(path: Path) -> datetime:
         .astimezone(timezone.utc)
 
 class FTP:
-    localTimezone = datetime.now().astimezone().tzinfo
+    localTimezone: tzinfo = datetime.now().astimezone().tzinfo or timezone.utc 
     # MSLD uses an almost short ISO format (missing date/time separator):
-    mlsdTSFormat = "%Y%m%d%H%M%S"
+    mlsdTSFormat: str = "%Y%m%d%H%M%S"
     # Path to last empty directory made in mirror():
     _lastMkd: PurePath|None = None
 
@@ -38,8 +39,9 @@ class FTP:
         Logger.log(Logger.Mode.ok, "BYE")
 
     def mlsd(self, path: PurePath) -> dict[str, dict[str, Any]]:
-        """Convert complex object returned by FTP.mlsd() into a JSON-like
-        object."""
+        """ Convert complex object returned by FTP.mlsd() into a JSON-like
+            object.
+        """
 
         mlsdResult = self.ftpConn.mlsd(str(path))
         Logger.log(Logger.Mode.ok, f"MLSD {path}")
@@ -53,7 +55,8 @@ class FTP:
         return mlsdSimple
 
     def rmdDeep(self, dir_: PurePath) -> None:
-        """FTP rm -r implementation."""
+        """ FTP rm -r implementation.
+        """
 
         flagRemoved = False
         try:
@@ -81,7 +84,8 @@ class FTP:
 
     def mirror(self, srcDir: Path, srcRoot: Path, destRoot: PurePath, 
                ignoredPatterns) -> None:
-        """Mirror command implementation."""
+        """ Mirror command implementation.
+        """
 
         # Translate local paths into remote paths (switch roots):
         destDir = destRoot / srcDir.relative_to(srcRoot)
@@ -135,7 +139,7 @@ class FTP:
                 self.mirror(srcChild, srcRoot, destRoot, ignoredPatterns)
                 return
 
-            srcMTime = getPathMTime(srcChild)
+            srcMTime = getFileMTime(srcChild)
             if srcChild.name in mlsdList.keys():
                 # Skip file if local modtime is smaller or equal to remote
                 destMTime = mlsdList[srcChild.name]["mtime"]

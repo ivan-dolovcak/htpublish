@@ -10,11 +10,15 @@ from ftp import FTP
 
 
 def loadConfig() -> dict[str, Any]:
+    """ Load, parse and return JSON config from "config.json".
+    """
+
     # Load config if file exists
     configPath = Path("config.json")
     if not configPath.exists():
         Logger.log(Logger.Mode.error,
             f"Error: config file '{configPath}' not found.")
+    
     with configPath.open() as configFile:
         try:
             config = jsonLoad(configFile)
@@ -31,6 +35,14 @@ def loadConfig() -> dict[str, Any]:
         Logger.log(Logger.Mode.error, 
             f"Error: missing required key in config: '{e.args[0]}'")
     
+    if not config["srcDir"].is_absolute():
+        Logger.log(Logger.Mode.error,
+            "Error: 'srcDir' has to be an absolute path.")
+
+    if not config["srcDir"].exists():
+        Logger.log(Logger.Mode.error,
+            f"Error: source dir '{config['srcDir']}' not found.")
+
     if not config["destDir"].is_absolute():
         Logger.log(Logger.Mode.error,
             "Error: 'destDir' has to be an absolute path.")
@@ -41,10 +53,6 @@ def loadConfig() -> dict[str, Any]:
                 f"Error: bogus timeout value: {config['timeout']}")
     else:
         config["timeout"] = 3
-
-    if not config["srcDir"].exists():
-        Logger.log(Logger.Mode.error,
-            f"Error: source dir '{config['srcDir']}' not found.")
     
     return config
 
@@ -62,15 +70,15 @@ def main() -> None:
             ftpObj.mirror(config["srcDir"], config["srcDir"], config["destDir"],
                 config["ignored"])
 
-            ftpObj.closeConn()
             break
         except ftplib.all_errors as e:
             if "timed out" in str(e):
                 Logger.log(Logger.Mode.note, f"FTP Error: {e}")
-                ftpObj.closeConn()
                 Logger.log(Logger.Mode.note, "RETRYING...")
             else:
                 Logger.log(Logger.Mode.error, f"FTP Error: {e}")
+        finally:
+            ftpObj.closeConn()
 
 if __name__ == "__main__":
     main()
