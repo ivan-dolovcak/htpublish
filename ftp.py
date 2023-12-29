@@ -30,25 +30,25 @@ class FTP:
         self.timeout: int = timeout
     
     def connect(self) -> None:
-        Logger.log(Logger.Mode.command,f"LOGIN {self.username}@{self.hostname}")
+        Logger.command(f"LOGIN {self.username}@{self.hostname}")
         
         self.ftpConn = ftplib.FTP(host=self.hostname, timeout=self.timeout)
         self.ftpConn.login(self.username, self.password)
 
-        Logger.log(Logger.Mode.ok, f"Logged in {self.username}@{self.hostname}.")
+        Logger.ok(f"Logged in {self.username}@{self.hostname}.")
     
     def closeConn(self) -> None:
-        Logger.log(Logger.Mode.command, "QUIT")
+        Logger.command("QUIT")
         self.ftpConn.close()
-        Logger.log(Logger.Mode.ok, "Closed connection to the server.")
+        Logger.ok("Closed connection to the server.")
 
     def mlsd(self, path: PurePath) -> dict[str, dict[str, Any]]:
         """ Convert complex object returned by FTP.mlsd() into a JSON-like
             object.
         """
-        Logger.log(Logger.Mode.command, f"MLSD {path}")
+        Logger.command(f"MLSD {path}")
         mlsdResult = self.ftpConn.mlsd(str(path))
-        Logger.log(Logger.Mode.info, f"Successfully retrieved listing of directory '{path}'.")
+        Logger.info(f"Successfully retrieved listing of directory '{path}'.")
 
         # Unpack generator and remove "." and ".." from results:
         mlsdResultList = list(mlsdResult)[2:]
@@ -64,14 +64,14 @@ class FTP:
 
         flagRemoved = False
         try:
-            Logger.log(Logger.Mode.command, f"RMD {dir_}")
+            Logger.command(f"RMD {dir_}")
             self.ftpConn.rmd(str(dir_))
             flagRemoved = True
-            Logger.log(Logger.Mode.note, f"Removed empty directory '{dir_}'.")
+            Logger.note(f"Removed empty directory '{dir_}'.")
         except ftplib.error_perm as e:
             ftpErrCode = int(e.args[0][:3]) 
             if ftpErrCode != 550: # dir not empty error
-                Logger.log(Logger.Mode.error, f"FTP error: {e}")
+                Logger.error(f"FTP error: {e}")
                 return
         
         # If dir not empty, delete files and recurse into other dirs
@@ -80,14 +80,14 @@ class FTP:
             if stats["type"] == "dir":
                 self.rmdDeep(dir_ / childName)
             else:
-                Logger.log(Logger.Mode.command, f"DELE {dir_ / childName}")
+                Logger.command(f"DELE {dir_ / childName}")
                 self.ftpConn.delete(str(dir_ / childName))
-                Logger.log(Logger.Mode.note, f"Deleted file '{dir_ / childName}'.")
+                Logger.note(f"Deleted file '{dir_ / childName}'.")
 
         if not flagRemoved:
-            Logger.log(Logger.Mode.command, f"RMD {dir_}")
+            Logger.command(f"RMD {dir_}")
             self.ftpConn.rmd(str(dir_))
-            Logger.log(Logger.Mode.note, f"Deleted directory '{dir_}'.")
+            Logger.note(f"Deleted directory '{dir_}'.")
 
     def mirror(self, srcDir: Path, srcRoot: Path, destRoot: PurePath, 
                ignoredPatterns) -> None:
@@ -114,9 +114,9 @@ class FTP:
                 if childStats["type"] == "dir" and child not in srcDirs:
                     self.rmdDeep(destDir / child)
                 elif childStats["type"] == "file" and child not in srcFiles:
-                    Logger.log(Logger.Mode.command, f"DELE {destDir / child}")
+                    Logger.command(f"DELE {destDir / child}")
                     self.ftpConn.delete(str(destDir / child))
-                    Logger.log(Logger.Mode.note, f"Deleted file '{destDir / child}'.")
+                    Logger.note(f"Deleted file '{destDir / child}'.")
 
                 
                 # Save modtimes as datetime objects in a new key for later
@@ -125,12 +125,12 @@ class FTP:
                     FTP.mlsdTSFormat).replace(tzinfo=timezone.utc)
         else:
             mlsdList = {}
-            Logger.log(Logger.Mode.info, f"Skipped checking empty directory '{destDir}'.")
+            Logger.info(f"Skipped checking empty directory '{destDir}'.")
 
         for srcChild in srcDir.iterdir():
             # Match against all ignore patterns
             if any([srcChild.match(pattern) for pattern in ignoredPatterns]):
-                Logger.log(Logger.Mode.info, f"Ignore '{srcChild}'.")
+                Logger.info(f"Ignore '{srcChild}'.")
                 continue
 
             destChild: PurePath = destDir / srcChild.name
@@ -139,12 +139,12 @@ class FTP:
             # it
             if srcChild.is_dir():
                 if srcChild.name in mlsdList.keys():
-                    Logger.log(Logger.Mode.info, f"Skipped making directory '{destChild}' (already exists).")
+                    Logger.info(f"Skipped making directory '{destChild}' (already exists).")
                 else:
-                    Logger.log(Logger.Mode.command, f"MKD {destChild}")
+                    Logger.command(f"MKD {destChild}")
                     self.ftpConn.mkd(str(destChild))
                     _lastMkd = destChild
-                    Logger.log(Logger.Mode.ok, f"Created directory '{destChild}.")
+                    Logger.ok(f"Created directory '{destChild}.")
 
                 self.mirror(srcChild, srcRoot, destRoot, ignoredPatterns)
                 return
@@ -154,17 +154,17 @@ class FTP:
                 # Skip file if local modtime is smaller or equal to remote
                 destMTime = mlsdList[srcChild.name]["mtime"]
                 if srcMTime <= destMTime:
-                    Logger.log(Logger.Mode.info, f"Skipped unmodified file '{srcChild}'.")
+                    Logger.info(f"Skipped unmodified file '{srcChild}'.")
                     continue
 
             # Open in binary read mode since FTP.storbinary() is used
-            Logger.log(Logger.Mode.command, f"STOR {srcChild}")
+            Logger.command(f"STOR {srcChild}")
             self.ftpConn.storbinary(f"STOR {destChild}", srcChild.open("rb"))
 
             # Touch the remote file:
             msldTimestamp: str = datetime.strftime(srcMTime, FTP.mlsdTSFormat)
-            Logger.log(Logger.Mode.command, f"MFMT {msldTimestamp} {destChild}")
+            Logger.command(f"MFMT {msldTimestamp} {destChild}")
             self.ftpConn.sendcmd(f"MFMT {msldTimestamp} {destChild}")
 
-            Logger.log(Logger.Mode.ok, f"Uploaded file '{srcChild}'.")
+            Logger.ok(f"Uploaded file '{srcChild}'.")
 

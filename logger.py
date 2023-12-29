@@ -10,31 +10,39 @@ from importlib.util import find_spec as findModule
 class Logger:
     colorSupported: bool = findModule("colorama") is not None
 
-    class Mode:
-        error   = {"color": "\033[31m", "prompt": "[ERR]"} # red fg
-        info    = {"color": "\033[34m", "prompt": "[INFO]"} # blue fg
-        ok      = {"color": "\033[32m", "prompt": "[OK]"} # green fg
-        note    = {"color": "\033[33m", "prompt": "[NOTE]"} # yellow fg
-        command = {"color": "\033[35m", "prompt": "[CMD]"} # [idunno] fg
-
     @classmethod
-    def colored(cls, text: str, color: str) -> str:
-        """ Print a colored string using ANSI codes if color is supported.
-        """
-        if cls.colorSupported:
-            return f"{color}{text}{colorama.Style.RESET_ALL}"
-        else:
-            return text
-
-    @classmethod
-    def log(cls, mode: dict[str, str], message: str) -> None:
+    def log(cls, message: str, colorName: str, prompt: str = "") -> None:
         """ Print a colored log message.
 
             Example: [ERR]    FTP error: timeout
         """
-        formatted = f"{mode['prompt'].ljust(6)} {message}"
+        output = f"{prompt.ljust(6)} {message}"
         
-        print(cls.colored(formatted, mode["color"]))
+        if cls.colorSupported:
+            color = f"{getattr(colorama.Fore, colorName)}"
+            output = f"{color}{output}{colorama.Style.RESET_ALL}"
+        
+        print(output)
 
-        if mode == cls.Mode.error:
+        if prompt == "ERR":
             exit(1)
+    
+    @classmethod
+    def error(cls, message: str):
+        cls.log(message, "RED", "[ERR]")
+    
+    @classmethod
+    def info(cls, message: str):
+        cls.log(message, "BLUE", "[INFO]")
+    
+    @classmethod
+    def ok(cls, message: str):
+        cls.log(message, "GREEN", "[OK]")
+
+    @classmethod
+    def note(cls, message: str):
+        cls.log(message, "YELLOW", "[NOTE]")
+
+    @classmethod
+    def command(cls, message: str):
+        cls.log(message, "MAGENTA", "[CMD]")
