@@ -46,6 +46,7 @@ class FTP:
         """ Convert complex object returned by FTP.mlsd() into a JSON-like
             object.
         """
+        
         Logger.command(f"MLSD {path}")
         mlsdResult = self.ftpConn.mlsd(str(path))
         Logger.info(f"Successfully retrieved listing of directory '{path}'.")
@@ -57,6 +58,14 @@ class FTP:
         for item in mlsdResultList:
             mlsdSimple[item[0]] = item[1]
         return mlsdSimple
+    
+    def rm(self, file: PurePath) -> None:
+        """ rm wrapper with login.
+        """
+
+        Logger.command(f"DELE {file}")
+        self.ftpConn.delete(str(file))
+        Logger.note(f"Deleted file '{file}'.")
 
     def rmdDeep(self, dir_: PurePath) -> None:
         """ FTP rm -r implementation.
@@ -65,8 +74,10 @@ class FTP:
         flagRemoved = False
         try:
             Logger.command(f"RMD {dir_}")
+
             self.ftpConn.rmd(str(dir_))
             flagRemoved = True
+
             Logger.note(f"Removed empty directory '{dir_}'.")
         except ftplib.error_perm as e:
             ftpErrCode = int(e.args[0][:3]) 
@@ -80,9 +91,7 @@ class FTP:
             if stats["type"] == "dir":
                 self.rmdDeep(dir_ / childName)
             else:
-                Logger.command(f"DELE {dir_ / childName}")
-                self.ftpConn.delete(str(dir_ / childName))
-                Logger.note(f"Deleted file '{dir_ / childName}'.")
+                self.rm(dir_ / childName)
 
         if not flagRemoved:
             Logger.command(f"RMD {dir_}")
@@ -114,10 +123,7 @@ class FTP:
                 if childStats["type"] == "dir" and child not in srcDirs:
                     self.rmdDeep(destDir / child)
                 elif childStats["type"] == "file" and child not in srcFiles:
-                    Logger.command(f"DELE {destDir / child}")
-                    self.ftpConn.delete(str(destDir / child))
-                    Logger.note(f"Deleted file '{destDir / child}'.")
-
+                    self.rm(destDir / child)
                 
                 # Save modtimes as datetime objects in a new key for later
                 # comparing. MSLD should give timestamps in UTC.
@@ -135,11 +141,11 @@ class FTP:
 
             destChild: PurePath = destDir / srcChild.name
 
-            # If source is directory, try to remotely create it and recurse into
-            # it
+            # If source is dir, try to remotely create it and recurse into it
             if srcChild.is_dir():
                 if srcChild.name in mlsdList.keys():
-                    Logger.info(f"Skipped making directory '{destChild}' (already exists).")
+                    Logger.info(
+                    f"Skipped making directory '{destChild}' (already exists).")
                 else:
                     Logger.command(f"MKD {destChild}")
                     self.ftpConn.mkd(str(destChild))

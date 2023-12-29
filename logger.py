@@ -24,25 +24,11 @@ class Logger:
         
         print(output)
 
-        if prompt == "ERR":
+        if prompt == "[ERR]":
             exit(1)
     
-    @classmethod
-    def error(cls, message: str):
-        cls.log(message, "RED", "[ERR]")
-    
-    @classmethod
-    def info(cls, message: str):
-        cls.log(message, "BLUE", "[INFO]")
-    
-    @classmethod
-    def ok(cls, message: str):
-        cls.log(message, "GREEN", "[OK]")
-
-    @classmethod
-    def note(cls, message: str):
-        cls.log(message, "YELLOW", "[NOTE]")
-
-    @classmethod
-    def command(cls, message: str):
-        cls.log(message, "MAGENTA", "[CMD]")
+    error   = lambda message: Logger.log(message, "RED", "[ERR]")
+    info    = lambda message: Logger.log(message, "BLUE", "[INFO]")
+    ok      = lambda message: Logger.log(message, "GREEN", "[OK]")
+    note    = lambda message: Logger.log(message, "YELLOW", "[NOTE]")
+    command = lambda message: Logger.log(message, "MAGENTA", "[CMD]")
