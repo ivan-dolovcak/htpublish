@@ -8,6 +8,9 @@ from importlib.util import find_spec as findModule
 
 
 class Logger:
+    """ Class for printing pretty log messages.
+    """
+
     colorSupported: bool = findModule("colorama") is not None
 
     @classmethod
@@ -16,11 +19,14 @@ class Logger:
 
             Example: [ERR]    FTP error: timeout
         """
+
+        # Add padding spaces:
         output = f"{prompt.ljust(6)} {message}"
         
         if cls.colorSupported:
-            color = f"{getattr(colorama.Fore, colorName)}"
-            output = f"{color}{output}{colorama.Style.RESET_ALL}"
+            colorCode = f"{getattr(colorama.Fore, colorName)}"
+
+            output = f"{colorCode}{output}{colorama.Style.RESET_ALL}"
         
         print(output)
 

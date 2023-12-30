@@ -7,20 +7,23 @@ from logger import Logger
 
 
 def getFileMTime(path: Path) -> datetime:
-    """ Get local file's modtime as a datetime object.
+    """ Get local file's UTC modtime as a datetime object.
     """
 
+    # Modtime has to be converted to UTC because it's later compared with the
+    # timestamp returned my mlsd(), which is also in UTC.
     return datetime \
         .fromtimestamp(path.stat().st_mtime, FTP.localTimezone) \
         .replace(microsecond=0) \
         .astimezone(timezone.utc)
 
 class FTP:
+    """ Class containing all methods requiring an FTP connection.
+    """
+
     localTimezone: tzinfo = datetime.now().astimezone().tzinfo or timezone.utc 
     # MSLD uses an almost short ISO format (missing date/time separator):
     mlsdTSFormat: str = "%Y%m%d%H%M%S"
-    # Path to last empty directory made in mirror():
-    _lastMkd: PurePath|None = None
 
     def __init__(self, hostname: str, username: str, password: str, 
                  timeout: int):
@@ -28,6 +31,8 @@ class FTP:
         self.username: str = username
         self.password: str = password
         self.timeout: int = timeout
+        # Path to last empty directory made in mirror():
+        self._lastMkd = None
     
     def connect(self) -> None:
         Logger.command(f"LOGIN {self.username}@{self.hostname}")
@@ -60,7 +65,7 @@ class FTP:
         return mlsdSimple
     
     def rm(self, file: PurePath) -> None:
-        """ rm wrapper with login.
+        """ rm wrapper with logger.
         """
 
         Logger.command(f"DELE {file}")
@@ -108,7 +113,7 @@ class FTP:
 
         # lastMkd is guaranteed to be empty, so no need to check for files to
         # delete:
-        if destDir != FTP._lastMkd:
+        if destDir != self._lastMkd:
             # Get standardized MLSD directory listing:
             mlsdList = self.mlsd(destDir)
 
