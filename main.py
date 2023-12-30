@@ -29,6 +29,9 @@ def readCmdArgs() -> argparse.Namespace:
     cliParser.add_argument("-R", "--no-reconnect",
         help="don't reconnect to server after timeout error",
         action="store_true")
+    cliParser.add_argument("-c", "--log-commands",
+        help="show commands before they are sent to the server (debug)",
+        action="store_true")
     cliParser.add_argument("-t", "--timeout",
         help="set timeout value",
         metavar="seconds",
@@ -84,7 +87,13 @@ def main() -> None:
     config = loadConfig()
     cmdArgs = readCmdArgs()
 
-    Logger.colorSupported = not cmdArgs.no_color
+
+    wantColor = not cmdArgs.no_color
+    if wantColor and (not Logger.colorSupported):
+        Logger.error("Install the colorama module for colored output to work \
+(pip install colorama) or run the program with the -C flag.")
+
+    Logger.doLogCommands = cmdArgs.log_commands
 
     ftpObj = FTP(config["hostname"], config["username"], config["password"],
         cmdArgs.timeout)
@@ -103,7 +112,7 @@ def main() -> None:
             break
         except ftplib.all_errors as e:
             if "timed out" in str(e):
-                Logger.note(f"FTP error: {e}")
+                Logger.error(f"FTP error: {e}", isErrorFatal=False)
 
                 if cmdArgs.no_reconnect:
                     break

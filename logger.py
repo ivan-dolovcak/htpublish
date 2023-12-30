@@ -12,6 +12,7 @@ class Logger:
     """
 
     colorSupported: bool = findModule("colorama") is not None
+    doLogCommands: bool = False
 
     @classmethod
     def log(cls, message: str, colorName: str, prompt: str = "") -> None:
@@ -43,11 +44,12 @@ class Logger:
         Logger.log(message, "YELLOW", "[NOTE]")
 
     @classmethod
-    def error(cls, message: str) -> None:
+    def error(cls, message: str, isErrorFatal: bool = True) -> None:
         Logger.log(message, "RED", "[ERR]")
-        exit(1)
+        if isErrorFatal:
+            exit(1)
 
     @classmethod
     def command(cls, message: str) -> None:
-        Logger.log(message, "MAGENTA", "[CMD]")
-
+        if cls.doLogCommands:
+            Logger.log(message, "CYAN", "[CMD]")

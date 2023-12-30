@@ -31,8 +31,11 @@ class FTP:
         self.username: str = username
         self.password: str = password
         self.timeout: int = timeout
+        
         # Path to last empty directory made in mirror():
         self._lastMkd = None
+
+        # CLI-related:
         self.deleteDisabled = False
         self.ignoreDisabled = False
     
@@ -116,8 +119,6 @@ class FTP:
         """ Mirror command implementation.
         """
 
-        Logger.note(f"Mirroring '{srcDir}'")
-
         # Translate local paths into remote paths (switch roots):
         destDir = destRoot / srcDir.relative_to(srcRoot)
 
@@ -189,4 +190,3 @@ class FTP:
             self.ftpConn.sendcmd(f"MFMT {msldTimestamp} {destChild}")
 
             Logger.ok(f"Uploaded file '{srcChild}'.")
-
