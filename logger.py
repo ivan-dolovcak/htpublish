@@ -29,12 +29,25 @@ class Logger:
             output = f"{colorCode}{output}{colorama.Style.RESET_ALL}"
         
         print(output)
-
-        if prompt == "[ERR]":
-            exit(1)
     
-    error   = lambda message: Logger.log(message, "RED", "[ERR]")
-    info    = lambda message: Logger.log(message, "BLUE", "[INFO]")
-    ok      = lambda message: Logger.log(message, "GREEN", "[OK]")
-    note    = lambda message: Logger.log(message, "YELLOW", "[NOTE]")
-    command = lambda message: Logger.log(message, "MAGENTA", "[CMD]")
+    @classmethod
+    def info(cls, message: str) -> None:
+        Logger.log(message, "BLUE", "[INFO]")
+
+    @classmethod
+    def ok(cls, message: str) -> None:
+        Logger.log(message, "GREEN", "[OK]")
+
+    @classmethod
+    def note(cls, message: str) -> None:
+        Logger.log(message, "YELLOW", "[NOTE]")
+
+    @classmethod
+    def error(cls, message: str) -> None:
+        Logger.log(message, "RED", "[ERR]")
+        exit(1)
+
+    @classmethod
+    def command(cls, message: str) -> None:
+        Logger.log(message, "MAGENTA", "[CMD]")
+
