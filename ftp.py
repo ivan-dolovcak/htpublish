@@ -166,27 +166,30 @@ class FTP:
                 else:
                     Logger.command(f"MKD {destChild}")
                     self.ftpConn.mkd(str(destChild))
-                    _lastMkd = destChild
+                    self._lastMkd = destChild
                     Logger.ok(f"Created directory '{destChild}'.")
 
                 self.mirror(srcChild, srcRoot, destRoot, ignoredPatterns)
-                return
+            # If source is file, upload it if it's not in ignored patterns and
+            # if it's modified (local mtime <= remote mtime).
+            else:
+                srcMTime = getFileMTime(srcChild)
+                if srcChild.name in mlsdList.keys():
+                    # Skip file if local modtime is smaller or equal to remote
+                    destMTime = mlsdList[srcChild.name]["mtime"]
+                    if srcMTime <= destMTime:
+                        Logger.info(f"Skipped unmodified file '{srcChild}'.")
+                        continue
 
-            srcMTime = getFileMTime(srcChild)
-            if srcChild.name in mlsdList.keys():
-                # Skip file if local modtime is smaller or equal to remote
-                destMTime = mlsdList[srcChild.name]["mtime"]
-                if srcMTime <= destMTime:
-                    Logger.info(f"Skipped unmodified file '{srcChild}'.")
-                    continue
+                Logger.command(f"STOR {destChild}")
+                # Open in binary read mode since FTP.storbinary() is used:
+                self.ftpConn.storbinary(
+                    f"STOR {destChild}", srcChild.open("rb"))
 
-            # Open in binary read mode since FTP.storbinary() is used
-            Logger.command(f"STOR {destChild}")
-            self.ftpConn.storbinary(f"STOR {destChild}", srcChild.open("rb"))
+                # Touch the remote file since reuploading the file doesn't
+                # update its mtime
+                msldTS: str = datetime.strftime(srcMTime, FTP.mlsdTSFormat)
+                Logger.command(f"MFMT {msldTS} {destChild}")
+                self.ftpConn.sendcmd(f"MFMT {msldTS} {destChild}")
 
-            # Touch the remote file:
-            msldTimestamp: str = datetime.strftime(srcMTime, FTP.mlsdTSFormat)
-            Logger.command(f"MFMT {msldTimestamp} {destChild}")
-            self.ftpConn.sendcmd(f"MFMT {msldTimestamp} {destChild}")
-
-            Logger.ok(f"Uploaded file '{srcChild}'.")
+                Logger.ok(f"Uploaded file '{srcChild}'.")
