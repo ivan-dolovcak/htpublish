@@ -67,7 +67,11 @@ def loadConfig() -> dict[str, Any]:
     # Try parsing config
     try:
         _ = config["hostname"]
-        _ = config["ignored"]
+
+        # Handle Windows paths with raw strings (\ -> \\)
+        config["srcDir"] = rf"{config['srcDir'] }"
+        config["destDir"] = rf"{config['destDir'] }"
+
         config["srcDir"] = Path(config["srcDir"]).absolute()
         config["destDir"] = PurePath(config["destDir"])
     except KeyError as e:
