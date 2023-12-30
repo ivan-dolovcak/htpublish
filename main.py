@@ -8,6 +8,7 @@ from typing import Any
 
 from logger import Logger
 from ftp import FTP
+from _version import __version__
 
 
 def readCmdArgs() -> argparse.Namespace:
@@ -39,7 +40,7 @@ def readCmdArgs() -> argparse.Namespace:
         type=int)
     cliParser.add_argument("-v", "--version",
         action="version",
-        version="%(prog)s 0.6.0")
+        version=f"%(prog)s {__version__}")
 
     cmdArgs = cliParser.parse_args()
 
