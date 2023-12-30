@@ -14,7 +14,7 @@ from _version import __version__
 def readCmdArgs() -> argparse.Namespace:
     cliParser = argparse.ArgumentParser(
         prog="htpublish",
-        description="Python script for uploading a website to FTP server",
+        description="Python script for uploading a website to an FTP server",
         epilog="""Copyright (c) 2023 Ivan Dolovčak. Source code is available
                   under the MIT License."""
     )
