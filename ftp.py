@@ -33,6 +33,8 @@ class FTP:
         self.timeout: int = timeout
         # Path to last empty directory made in mirror():
         self._lastMkd = None
+        self.deleteDisabled = False
+        self.ignoreDisabled = False
     
     def connect(self) -> None:
         Logger.command(f"LOGIN {self.username}@{self.hostname}")
@@ -68,6 +70,9 @@ class FTP:
         """ rm wrapper with logger.
         """
 
+        if self.deleteDisabled:
+            return
+
         Logger.command(f"DELE {file}")
         self.ftpConn.delete(str(file))
         Logger.note(f"Deleted file '{file}'.")
@@ -75,6 +80,9 @@ class FTP:
     def rmdDeep(self, dir_: PurePath) -> None:
         """ FTP rm -r implementation.
         """
+
+        if self.deleteDisabled:
+            return
 
         flagRemoved = False
         try:
@@ -104,9 +112,11 @@ class FTP:
             Logger.note(f"Deleted directory '{dir_}'.")
 
     def mirror(self, srcDir: Path, srcRoot: Path, destRoot: PurePath, 
-               ignoredPatterns) -> None:
+               ignoredPatterns: list[str]) -> None:
         """ Mirror command implementation.
         """
+
+        Logger.note(f"Mirroring '{srcDir}'")
 
         # Translate local paths into remote paths (switch roots):
         destDir = destRoot / srcDir.relative_to(srcRoot)
@@ -140,7 +150,8 @@ class FTP:
 
         for srcChild in srcDir.iterdir():
             # Match against all ignore patterns
-            if any([srcChild.match(pattern) for pattern in ignoredPatterns]):
+            if not self.ignoreDisabled and \
+                any([srcChild.match(pattern) for pattern in ignoredPatterns]):
                 Logger.info(f"Ignore '{srcChild}'.")
                 continue
 
@@ -155,7 +166,7 @@ class FTP:
                     Logger.command(f"MKD {destChild}")
                     self.ftpConn.mkd(str(destChild))
                     _lastMkd = destChild
-                    Logger.ok(f"Created directory '{destChild}.")
+                    Logger.ok(f"Created directory '{destChild}'.")
 
                 self.mirror(srcChild, srcRoot, destRoot, ignoredPatterns)
                 return
@@ -169,7 +180,7 @@ class FTP:
                     continue
 
             # Open in binary read mode since FTP.storbinary() is used
-            Logger.command(f"STOR {srcChild}")
+            Logger.command(f"STOR {destChild}")
             self.ftpConn.storbinary(f"STOR {destChild}", srcChild.open("rb"))
 
             # Touch the remote file:
